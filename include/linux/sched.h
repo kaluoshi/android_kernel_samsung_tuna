@@ -139,12 +139,14 @@ extern int nr_processes(void);
 extern unsigned long nr_running(void);
 extern unsigned long nr_uninterruptible(void);
 extern unsigned long nr_iowait(void);
+extern unsigned long avg_nr_running(void);
 extern unsigned long nr_iowait_cpu(int cpu);
 extern unsigned long this_cpu_load(void);
 
 
 extern void calc_global_load(unsigned long ticks);
 
+extern void prepare_calc_load(void);
 extern unsigned long get_parent_ip(unsigned long addr);
 
 struct seq_file;
@@ -1879,6 +1881,13 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p,
 }
 #endif
 
+#ifdef CONFIG_NO_HZ
+void calc_load_enter_idle(void);
+void calc_load_exit_idle(void);
+#else
+static inline void calc_load_enter_idle(void) { }
+static inline void calc_load_exit_idle(void) { }
+#endif /* CONFIG_NO_HZ */
 #ifndef CONFIG_CPUMASK_OFFSTACK
 static inline int set_cpus_allowed(struct task_struct *p, cpumask_t new_mask)
 {
@@ -2724,7 +2733,6 @@ static inline unsigned long task_get_effective_timer_slack(
 	return tsk->timer_slack_ns;
 }
 #endif
-
 #endif /* __KERNEL__ */
 
 #endif

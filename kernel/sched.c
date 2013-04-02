@@ -468,6 +468,10 @@ struct rq {
 	unsigned char nohz_balance_kick;
 #endif
 	int skip_clock_update;
+	
+	/* time-based average load */
+	u64 nr_last_stamp;
+	unsigned int ave_nr_running;
 
 	/* capture load from *all* tasks on this cpu: */
 	struct load_weight load;
