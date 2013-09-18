@@ -153,16 +153,32 @@ static struct omap_opp_def __initdata omap443x_opp_def_list[] = {
 	OPP_INITIALIZER("aess", "abe_clk", "iva", true, 196608000, OMAP4430_VDD_IVA_OPP100_UV),
 };
 
-#define OMAP4460_VDD_MPU_OPP50_UV		1025000
-#define OMAP4460_VDD_MPU_OPP100_UV		1203000
-#define OMAP4460_VDD_MPU_OPPTURBO_UV		1317000
-#define OMAP4460_VDD_MPU_OPPNITRO_UV		1380000
+#define OMAP4460_VDD_MPU_OPP25_UV		800000
+#define OMAP4460_VDD_MPU_OPP50_UV		850000
+#define OMAP4460_VDD_MPU_OPP75_UV		900000
+#define OMAP4460_VDD_MPU_OPP100_UV		1050000
+#define OMAP4460_VDD_MPU_OPPTURBO_UV		1150000
+#define OMAP4460_VDD_MPU_OPPNITRO_UV		1225000
+#define OMAP4460_VDD_MPU_OPP_1			1275000
+#define OMAP4460_VDD_MPU_OPP_2			1350000
+#define OMAP4460_VDD_MPU_OPP_3			1375000
+#define OMAP4460_VDD_MPU_OPP_4			1400000
+#define OMAP4460_VDD_MPU_OPP_5			1425000
+#define OMAP4460_VDD_MPU_OPP_6			1450000
 
 struct omap_volt_data omap446x_vdd_mpu_volt_data[] = {
-	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP50_UV, 10000, OMAP44XX_CONTROL_FUSE_MPU_OPP50, 0xf4, 0x0c, OMAP_ABB_NOMINAL_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP25_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPP25, 0xf4, 0x0c, OMAP_ABB_NOMINAL_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP50_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPP50, 0xf4, 0x0c, OMAP_ABB_NOMINAL_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP75_UV, 70000, OMAP44XX_CONTROL_FUSE_MPU_OPP50, 0xf4, 0x0c, OMAP_ABB_NOMINAL_OPP),
 	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP100_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPP100, 0xf9, 0x16, OMAP_ABB_NOMINAL_OPP),
 	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPPTURBO_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPPTURBO, 0xfa, 0x23, OMAP_ABB_NOMINAL_OPP),
 	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPPNITRO_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPPNITRO, 0xfa, 0x27, OMAP_ABB_FAST_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP_1, 30000, OMAP44XX_CONTROL_FUSE_MPU_OPPNITRO, 0xfa, 0x27, OMAP_ABB_FAST_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP_2, 0, 0, 0, 0, OMAP_ABB_FAST_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP_3, 0, 0, 0, 0, OMAP_ABB_FAST_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP_4, 0, 0, 0, 0, OMAP_ABB_FAST_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP_5, 0, 0, 0, 0, OMAP_ABB_FAST_OPP),
+	VOLT_DATA_DEFINE(OMAP4460_VDD_MPU_OPP_6, 0, 0, 0, 0, OMAP_ABB_FAST_OPP),
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0, 0),
 };
 
@@ -192,10 +208,18 @@ struct omap_volt_data omap446x_vdd_core_volt_data[] = {
 
 /* OMAP 4460 MPU Core VDD dependency table */
 static struct omap_vdd_dep_volt omap446x_vdd_mpu_core_dep_data[] = {
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP25_UV, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP50_UV},
 	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP50_UV, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP50_UV},
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP75_UV, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP50_UV},
 	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP100_UV, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
 	{.main_vdd_volt = OMAP4460_VDD_MPU_OPPTURBO_UV, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
 	{.main_vdd_volt = OMAP4460_VDD_MPU_OPPNITRO_UV, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP_1, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP_2, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP_3, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP_4, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP_5, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
+	{.main_vdd_volt = OMAP4460_VDD_MPU_OPP_6, .dep_vdd_volt = OMAP4460_VDD_CORE_OPP100_UV},
 };
 
 struct omap_vdd_dep_info omap446x_vddmpu_dep_info[] = {
@@ -224,14 +248,25 @@ struct omap_vdd_dep_info omap446x_vddiva_dep_info[] = {
 };
 
 static struct omap_opp_def __initdata omap446x_opp_def_list[] = {
+	/* MPU OPP25 */
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 192000000, OMAP4460_VDD_MPU_OPP25_UV),
 	/* MPU OPP1 - OPP50 */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 350000000, OMAP4460_VDD_MPU_OPP50_UV),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 384000000, OMAP4460_VDD_MPU_OPP50_UV),
+	/* MPU OPPX - OPP75 */
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 537600000, OMAP4460_VDD_MPU_OPP75_UV),
 	/* MPU OPP2 - OPP100 */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 700000000, OMAP4460_VDD_MPU_OPP100_UV),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 729600000, OMAP4460_VDD_MPU_OPP100_UV),
 	/* MPU OPP3 - OPP-Turbo */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 920000000, OMAP4460_VDD_MPU_OPPTURBO_UV),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", true, 1036800000, OMAP4460_VDD_MPU_OPPTURBO_UV),
 	/* MPU OPP4 - OPP-Nitro */
-	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1200000000, OMAP4460_VDD_MPU_OPPNITRO_UV),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1228800000, OMAP4460_VDD_MPU_OPPNITRO_UV),
+	/* MPU OPP4 - OPP-Nitro SpeedBin */
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1305600000, OMAP4460_VDD_MPU_OPP_1),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1420800000, OMAP4460_VDD_MPU_OPP_2),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1536000000, OMAP4460_VDD_MPU_OPP_3),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1612800000, OMAP4460_VDD_MPU_OPP_4),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1728000000, OMAP4460_VDD_MPU_OPP_5),
+	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1804800000, OMAP4460_VDD_MPU_OPP_6),
 	/* MPU OPP4 - OPP-Nitro SpeedBin */
 	OPP_INITIALIZER("mpu", "virt_dpll_mpu_ck", "mpu", false, 1500000000, OMAP4460_VDD_MPU_OPPNITRO_UV),
 	/* L3 OPP1 - OPP50 */
@@ -312,22 +347,16 @@ int __init omap4_opp_init(void)
 {
 	int r = -ENODEV;
 
-	if (!cpu_is_omap44xx())
-		return r;
-	if (cpu_is_omap443x())
-		r = omap_init_opp_table(omap443x_opp_def_list,
-			ARRAY_SIZE(omap443x_opp_def_list));
-	else if (cpu_is_omap446x())
-		r = omap_init_opp_table(omap446x_opp_def_list,
-			ARRAY_SIZE(omap446x_opp_def_list));
+	r = omap_init_opp_table(omap446x_opp_def_list,
+		ARRAY_SIZE(omap446x_opp_def_list));
 
-	if (!r) {
-		if (omap4_has_mpu_1_2ghz())
-			omap4_mpu_opp_enable(1200000000);
-		/* The tuna PCB doesn't support 1.5GHz, so disable it for now */
-		/*if (omap4_has_mpu_1_5ghz())
-			omap4_mpu_opp_enable(1500000000);*/
-	}
+	omap4_mpu_opp_enable(1228800000);
+	omap4_mpu_opp_enable(1305600000);
+	omap4_mpu_opp_enable(1420800000);
+	omap4_mpu_opp_enable(1536000000);
+	omap4_mpu_opp_enable(1612800000);
+	omap4_mpu_opp_enable(1728000000);
+	omap4_mpu_opp_enable(1804800000);
 
 	return r;
 }
