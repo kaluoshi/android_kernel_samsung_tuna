@@ -671,7 +671,26 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 			break;
 	}
 
-	return rc;
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_GC1_00_BD)
+	/* Temporary log to get information whether the compaction works well */
+	printk(KERN_NOTICE "%s, order=%d, sync=%d\n", __func__, order, sync);
+#endif
+	count_vm_event(COMPACTSTALL);
+
+	/* Compact each zone in the list */
+	for_each_zone_zonelist_nodemask(zone, z, zonelist, high_zoneidx,
+								nodemask) {
+		int status;
+
+		status = compact_zone_order(zone, order, gfp_mask, sync);
+		rc = max(status, rc);
+
+		/* If a normal allocation would succeed, stop compacting */
+		if (zone_watermark_ok(zone, order, low_wmark_pages(zone), 0, 0))
+			break;
+	}
+
+return rc;
 }
 
 
