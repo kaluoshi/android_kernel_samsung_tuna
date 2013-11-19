@@ -20,14 +20,16 @@
 
 #include <plat/omap_hwmod.h>
 #include <plat/omap_device.h>
+#include <plat/omap_gcx.h>
+#include <plat/omap-pm.h>
+#include "prcm44xx.h"
+#include "cminst44xx.h"
+#include "cm2_44xx.h"
+#include "cm-regbits-44xx.h"
 
-/* gc-core platform device data structure */
-struct gccore_plat_data {
-	void __iomem *base;
-	int irq;
+static struct omap_gcx_platform_data omap_gcxxx = {
+	.was_context_lost = omap_pm_was_context_lost,
 };
-
-static struct gccore_plat_data omap_gcxxx;
 
 struct omap_device_pm_latency omap_gcxxx_latency[] = {
 	{
@@ -43,7 +45,7 @@ int __init gcxxx_init(void)
 	struct omap_hwmod *oh;
 	struct omap_device *od;
 	const char *oh_name = "bb2d";
-	const char *dev_name = "gc-core";
+	const char *dev_name = "gccore";
 
 	if (!cpu_is_omap447x())
 		return retval;
@@ -57,9 +59,7 @@ int __init gcxxx_init(void)
 	if (oh == NULL)
 		return -EINVAL;
 
-	omap_gcxxx.base = omap_hwmod_get_mpu_rt_va(oh);
-	omap_gcxxx.irq = oh->mpu_irqs[0].irq;
-
+	omap_gcxxx.regbase = omap_hwmod_get_mpu_rt_va(oh);
 	od = omap_device_build(dev_name, 0, oh, &omap_gcxxx,
 				sizeof(omap_gcxxx), omap_gcxxx_latency,
 				ARRAY_SIZE(omap_gcxxx_latency), false);

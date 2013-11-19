@@ -18,18 +18,6 @@
 #include <linux/sched.h>
 #include "gcioctl.h"
 
-/* Synchronization functions. */
-#define GC_INFINITE (~0U)
-void gc_delay(unsigned int milliseconds);
-enum gcerror gc_wait_completion(struct completion *completion,
-				unsigned int milliseconds);
-enum gcerror gc_acquire_mutex(struct mutex *mutex,
-				unsigned int milliseconds);
-
-/* Utility functions. */
-void gc_gpu_id(void);
-void gc_gpu_status(char *function, int line, unsigned int *acknowledge);
-
 /* Command buffer submission. */
 void gc_commit(struct gccommit *gccommit, int fromuser);
 

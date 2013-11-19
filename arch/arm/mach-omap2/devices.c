@@ -317,6 +317,27 @@ static void omap_init_mcpdm(void)
 	char *oh_name = "mcpdm";
 	char *dev_name = "omap-mcpdm";
 
+	/*
+	 * Init McPDM pins for OMAP4 to prevent the occurrence of
+	 * noise at the output of the Audio IC
+	 */
+	if (cpu_is_omap44xx()) {
+		omap_mux_init_signal("abe_pdm_ul_data.abe_pdm_ul_data",
+			OMAP_PIN_INPUT_PULLDOWN);
+
+		omap_mux_init_signal("abe_pdm_dl_data.abe_pdm_dl_data",
+			OMAP_PIN_INPUT_PULLDOWN);
+
+		omap_mux_init_signal("abe_pdm_frame.abe_pdm_frame",
+			OMAP_PIN_INPUT_PULLUP);
+
+		omap_mux_init_signal("abe_pdm_lb_clk.abe_pdm_lb_clk",
+			OMAP_PIN_INPUT_PULLDOWN);
+
+		omap_mux_init_signal("abe_clks.abe_clks",
+			OMAP_PIN_INPUT_PULLDOWN);
+	}
+
 	oh = omap_hwmod_lookup(oh_name);
 	if (!oh) {
 		pr_err("%s: could not look up %s\n", __func__, oh_name);
@@ -883,12 +904,6 @@ static struct omap_device_pm_latency omap_gpu_latency[] = {
 	},
 };
 
-static struct platform_device omap_omaplfb_device = {
-	.name		= "omaplfb",
-	.id		= -1,
-};
-
-
 static void omap_init_gpu(void)
 {
 	struct omap_hwmod *oh;
@@ -937,7 +952,6 @@ static void omap_init_gpu(void)
 	     name, oh_name);
 
 	kfree(pdata);
-	platform_device_register(&omap_omaplfb_device);
 }
 
 /*-------------------------------------------------------------------------*/

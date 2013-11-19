@@ -559,8 +559,8 @@ static struct rproc *__find_rproc_by_name(const char *name)
 }
 
 /**
- * __rproc_da_to_pa - convert a device (virtual) address to its physical address
- * @maps: the remote processor's memory mappings array
+ * rproc_da_to_pa - convert a device (virtual) address to its physical address
+ * @rproc: the remote processor handle
  * @da: a device address (as seen by the remote processor)
  * @pa: pointer to the physical address result
  *
@@ -571,26 +571,32 @@ static struct rproc *__find_rproc_by_name(const char *name)
  * On success 0 is returned, and the @pa is updated with the result.
  * Otherwise, -EINVAL is returned.
  */
-static int
-rproc_da_to_pa(const struct rproc_mem_entry *maps, u64 da, phys_addr_t *pa)
+int rproc_da_to_pa(struct rproc *rproc, u64 da, phys_addr_t *pa)
 {
-	int i;
-	u64 offset;
+	int i, ret = -EINVAL;
+	struct rproc_mem_entry *maps = NULL;
 
-	for (i = 0; maps[i].size; i++) {
-		const struct rproc_mem_entry *me = &maps[i];
+	if (!rproc || !pa)
+		return -EINVAL;
 
-		if (da >= me->da && da < (me->da + me->size)) {
-			offset = da - me->da;
+	if (mutex_lock_interruptible(&rproc->lock))
+		return -EINTR;
+
+	maps = rproc->memory_maps;
+	for (i = 0; maps->size; maps++) {
+		if (da >= maps->da && da < (maps->da + maps->size)) {
 			pr_debug("%s: matched mem entry no. %d\n",
 				__func__, i);
-			*pa = me->pa + offset;
-			return 0;
+			*pa = maps->pa + (da - maps->da);
+			ret = 0;
+			break;
 		}
 	}
 
-	return -EINVAL;
+	mutex_unlock(&rproc->lock);
+	return ret;
 }
+EXPORT_SYMBOL(rproc_da_to_pa);
 
 static int rproc_mmu_fault_isr(struct rproc *rproc, u64 da, u32 flags)
 {
@@ -828,6 +834,7 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 	u64 trace_da1 = 0;
 	u64 cdump_da0 = 0;
 	u64 cdump_da1 = 0;
+	u64 susp_addr = 0;
 	int ret = 0;
 
 	while (len >= sizeof(*rsc) && !ret) {
@@ -877,6 +884,9 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 			break;
 		case RSC_BOOTADDR:
 			*bootaddr = da;
+			break;
+		case RSC_SUSPENDADDR:
+			susp_addr = da;
 			break;
 		case RSC_DEVMEM:
 			ret = rproc_add_mem_entry(rproc, rsc);
@@ -943,7 +953,7 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 		goto error;
 
 	if (trace_da0) {
-		ret = rproc_da_to_pa(rproc->memory_maps, trace_da0, &pa);
+		ret = rproc_da_to_pa(rproc, trace_da0, &pa);
 		if (ret)
 			goto unlock;
 		rproc->trace_buf0 = (__force void *)
@@ -967,7 +977,7 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 		}
 	}
 	if (trace_da1) {
-		ret = rproc_da_to_pa(rproc->memory_maps, trace_da1, &pa);
+		ret = rproc_da_to_pa(rproc, trace_da1, &pa);
 		if (ret)
 			goto unlock;
 		rproc->trace_buf1 = (__force void *)
@@ -999,7 +1009,7 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 	 * make sparse happy
 	 */
 	if (cdump_da0) {
-		ret = rproc_da_to_pa(rproc->memory_maps, cdump_da0, &pa);
+		ret = rproc_da_to_pa(rproc, cdump_da0, &pa);
 		if (ret)
 			goto unlock;
 		rproc->cdump_buf0 = (__force void *)
@@ -1013,7 +1023,7 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 		}
 	}
 	if (cdump_da1) {
-		ret = rproc_da_to_pa(rproc->memory_maps, cdump_da1, &pa);
+		ret = rproc_da_to_pa(rproc, cdump_da1, &pa);
 		if (ret)
 			goto unlock;
 		rproc->cdump_buf1 = (__force void *)
@@ -1025,6 +1035,9 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 			ret = -EIO;
 		}
 	}
+	/* post-process pm data types */
+	if (susp_addr)
+		ret = rproc->ops->pm_init(rproc, susp_addr);
 
 unlock:
 	mutex_unlock(&rproc->tlock);
@@ -1082,7 +1095,7 @@ static int rproc_process_fw(struct rproc *rproc, struct fw_section *section,
 		}
 
 		if (section->type <= FW_DATA) {
-			ret = rproc_da_to_pa(rproc->memory_maps, da, &pa);
+			ret = rproc_da_to_pa(rproc, da, &pa);
 			if (ret) {
 				dev_err(dev, "rproc_da_to_pa failed:%d\n", ret);
 				break;
@@ -1127,7 +1140,7 @@ static void rproc_loader_cont(const struct firmware *fw, void *context)
 	u64 bootaddr = 0;
 	struct fw_header *image;
 	struct fw_section *section;
-	int left, ret;
+	int left, ret = -EINVAL;
 
 	if (!fw) {
 		dev_err(dev, "%s: failed to load %s\n", __func__, fwfile);
@@ -1149,7 +1162,7 @@ static void rproc_loader_cont(const struct firmware *fw, void *context)
 		goto out;
 	}
 
-	dev_info(dev, "BIOS image version is %d\n", image->version);
+	dev_dbg(dev, "BIOS image version is %d\n", image->version);
 
 	rproc->header = kzalloc(image->header_len, GFP_KERNEL);
 	if (!rproc->header) {
@@ -1174,6 +1187,10 @@ static void rproc_loader_cont(const struct firmware *fw, void *context)
 
 	left = fw->size - sizeof(struct fw_header) - image->header_len;
 
+	/* event currently used to bump the remoteproc to max freq
+	 * while booting.  */
+	_event_notify(rproc, RPROC_PRELOAD, NULL);
+
 	ret = rproc_process_fw(rproc, section, left, &bootaddr);
 	if (ret) {
 		dev_err(dev, "Failed to process the image: %d\n", ret);
@@ -1187,6 +1204,8 @@ out:
 complete_fw:
 	/* allow all contexts calling rproc_put() to proceed */
 	complete_all(&rproc->firmware_loading_complete);
+	if (ret)
+		_event_notify(rproc, RPROC_LOAD_ERROR, NULL);
 }
 
 static int rproc_loader(struct rproc *rproc)

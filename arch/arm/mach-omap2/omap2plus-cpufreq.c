@@ -425,8 +425,8 @@ static void __exit omap_duty_cooling_exit(void)
 
 #else
 
-static int __init omap_duty_cooling_init(void) { return 0; };
-static void __exit omap_duty_cooling_exit(void);
+static int __init omap_duty_cooling_init(void) { return 0; }
+static void __exit omap_duty_cooling_exit(void) { }
 
 #endif
 
@@ -493,8 +493,6 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
 		max_freq = max(freq_table[i].frequency, max_freq);
-	max_thermal = max_freq;
-	current_cooling_level = 0;
 
 	/*
 	 * On OMAP SMP configuartion, both processors share the voltage
@@ -508,7 +506,6 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 		cpumask_setall(policy->cpus);
 	}
 
-	omap_duty_cooling_init();
 	/* FIXME: what's the actual transition time? */
 	policy->cpuinfo.transition_latency = 300 * 1000;
 
@@ -705,6 +702,9 @@ static int __init omap_cpufreq_init(void)
 	ret = cpufreq_register_driver(&omap_driver);
 	omap_cpufreq_ready = !ret;
 
+	max_thermal = max_freq;
+	current_cooling_level = 0;
+
 	if (!ret) {
 		int t;
 
@@ -717,6 +717,14 @@ static int __init omap_cpufreq_init(void)
 			pr_warn("%s_init: platform_driver_register failed\n",
 				__func__);
 		ret = omap_cpufreq_cooling_init();
+
+		if (ret)
+			return ret;
+
+		ret = omap_duty_cooling_init();
+		if (ret)
+			pr_warn("%s: omap_duty_cooling_init failed\n",
+				__func__);
 	}
 
 	return ret;
