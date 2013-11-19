@@ -1312,14 +1312,22 @@ static int omap_gpio_resume(struct device *dev)
 static void omap_gpio_save_context(struct gpio_bank *bank);
 static void omap_gpio_restore_context(struct gpio_bank *bank);
 
-static void omap2_gpio_set_wakeupenables(struct gpio_bank *bank)
+static void omap2_gpio_set_wakeupenables(struct gpio_bank *bank, bool suspend)
 {
 	unsigned long pad_wakeup;
 	int i;
 
 	bank->context.pad_set_wakeupenable = 0;
 
-	pad_wakeup = __raw_readl(bank->base + bank->regs->irqenable);
+	if (pm_runtime_get_sync(bank->dev) < 0) {
+		dev_err(bank->dev, "%s: GPIO bank %d pm_runtime_get_sync "
+				"failed\n", __func__, bank->id);
+		return;
+	}
+	if (suspend)
+		pad_wakeup = bank->suspend_wakeup;
+	else
+		pad_wakeup = __raw_readl(bank->base + bank->regs->irqenable);
 
 	/*
 	 * HACK: Ignore gpios that have multiple sources.
@@ -1339,6 +1347,12 @@ static void omap2_gpio_set_wakeupenables(struct gpio_bank *bank)
 			bank->context.pad_set_wakeupenable |= BIT(i);
 			omap_mux_set_wakeupenable(bank->mux[i]);
 		}
+	}
+
+	if (pm_runtime_put_sync_suspend(bank->dev) < 0) {
+		dev_err(bank->dev, "%s: GPIO bank %d pm_runtime_put_sync "
+				"failed\n", __func__, bank->id);
+		return;
 	}
 }
 
@@ -1578,7 +1592,7 @@ int omap2_gpio_prepare_for_idle(int off_mode, bool suspend)
 		if (!bank->mod_usage)
 			continue;
 
-		omap2_gpio_set_wakeupenables(bank);
+		omap2_gpio_set_wakeupenables(bank, suspend);
 
 		if (omap2_gpio_set_edge_wakeup(bank, suspend))
 			ret = -EBUSY;

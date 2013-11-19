@@ -28,9 +28,13 @@
 #ifndef __OMAP_HSI_H__
 #define __OMAP_HSI_H__
 
+#define HSI_FCLK_LOW_SPEED		96000000	/* 96 MHz */
+#define HSI_FCLK_HI_SPEED		192000000	/* 192 MHz */
+#define HSI_FCLK_DPLL_CASCADING		98300000        /* 98.3 MHz */
+
 /* Set the HSI Functional Clock to 96MHz.
- * This is to ensure HSI will function even at OPP50. */
-#define HSI_DEFAULT_FCLK		96000000	/* 96 MHz */
+ * Warning : 192MHz will force OPP100 on VDD_CORE (no OPP50 possible) */
+#define HSI_DEFAULT_FCLK		HSI_FCLK_LOW_SPEED	/* 96 MHz */
 
 
 #define HSI_PORT_OFFSET			0x1000
@@ -139,7 +143,9 @@
 #define HSI_SET_WAKE_3_WIRES_MASK	0xfffcffff /* 3-wires + ACREADY to 1 */
 #define HSI_SET_WAKE_READY_LVL_0	(0 << 17)
 #define HSI_SET_WAKE_READY_LVL_1	(1 << 17)
-#define HSI_SET_WAKE(channel)		(1 << (channel))
+#define HSI_SET_WAKE(channel)		(1 << (channel) |\
+						HSI_SET_WAKE_4_WIRES |\
+						HSI_SET_WAKE_READY_LVL_0)
 #define HSI_CLEAR_WAKE(channel)		(1 << (channel))
 #define HSI_WAKE(channel)		(1 << (channel))
 
@@ -289,7 +295,9 @@
 /* Default FT value: 2 x max_bits_per_frame + 20% margin */
 #define HSI_COUNTERS_FT_DEFAULT		(90 << HSI_COUNTERS_FT_OFFSET)
 #define HSI_COUNTERS_TB_DEFAULT		(6 << HSI_COUNTERS_TB_OFFSET)
-#define HSI_COUNTERS_FB_DEFAULT		(8 << HSI_COUNTERS_FB_OFFSET)
+/* Default FB value: 256 consecutives frames */
+#define HSI_COUNTERS_FB_DEFAULT		(0xFF << HSI_COUNTERS_FB_OFFSET)
+
 #define HSI_HSR_COMBINE_COUNTERS(FB, TB, FT)				  \
 		(((FB << HSI_COUNTERS_FB_OFFSET) & HSI_COUNTERS_FB_MASK) \
 		 ((TB << HSI_COUNTERS_TB_OFFSET) & HSI_COUNTERS_TB_MASK) \
@@ -362,7 +370,7 @@
 #define HSI_DST_BURST_EN_MASK		0xc000
 #define HSI_DST_SINGLE_ACCESS0		0
 #define HSI_DST_SINGLE_ACCESS		(1 << 14)
-#define HSI_DST_BURST_4X32_BIT		(2 << 14)
+#define HSI_DST_BURST_4x32_BIT		(2 << 14)
 #define HSI_DST_BURST_8x32_BIT		(3 << 14)
 
 #define HSI_DST_MASK			0x1e00
@@ -515,12 +523,14 @@ extern int omap_hsi_prepare_suspend(int hsi_port, bool dev_may_wakeup);
 extern int omap_hsi_io_wakeup_check(void);
 extern int omap_hsi_wakeup(int hsi_port);
 extern bool omap_hsi_is_io_wakeup_from_hsi(int *hsi_port);
+extern void omap_hsi_allow_registration(void);
 #else
 inline int omap_hsi_prepare_suspend(int hsi_port,
 					bool dev_may_wakeup) { return -ENOSYS; }
 inline int omap_hsi_io_wakeup_check(void) { return -ENOSYS; }
 inline int omap_hsi_wakeup(int hsi_port) { return -ENOSYS; }
 inline bool omap_hsi_is_io_wakeup_from_hsi(int *hsi_port) { return false; }
+inline void omap_hsi_allow_registration(void) { return -ENOSYS; }
 #endif
 
 #endif /* __OMAP_HSI_H__ */

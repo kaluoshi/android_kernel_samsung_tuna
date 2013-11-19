@@ -1088,10 +1088,10 @@ static const struct snd_kcontrol_new abe_controls[] = {
 		MIX_VXREC_INPUT_TONES, 0, 149, 0,
 		volume_get_vxrec_mixer, volume_put_vxrec_mixer, vxrec_tones_tlv),
 	SOC_SINGLE_EXT_TLV("VXREC Voice DL Volume",
-		MIX_VXREC_INPUT_VX_UL, 0, 149, 0,
+		MIX_VXREC_INPUT_VX_DL, 0, 149, 0,
 		volume_get_vxrec_mixer, volume_put_vxrec_mixer, vxrec_vx_dl_tlv),
 	SOC_SINGLE_EXT_TLV("VXREC Voice UL Volume",
-		MIX_VXREC_INPUT_VX_DL, 0, 149, 0,
+		MIX_VXREC_INPUT_VX_UL, 0, 149, 0,
 		volume_get_vxrec_mixer, volume_put_vxrec_mixer, vxrec_vx_ul_tlv),
 
 	/* AUDUL mixer gains */
@@ -1193,6 +1193,8 @@ static const struct snd_soc_dapm_widget abe_dapm_widgets[] = {
 			W_AIF_DMIC1, ABE_OPP_50, 0),
 	SND_SOC_DAPM_AIF_IN("DMIC2", "DMIC2 Capture", 0,
 			W_AIF_DMIC2, ABE_OPP_50, 0),
+	SND_SOC_DAPM_AIF_IN("VXREC", "VXREC Capture", 0,
+			W_AIF_VXREC, ABE_OPP_50, 0),
 
 	/* ROUTE_UL Capture Muxes */
 	SND_SOC_DAPM_MUX("MUX_UL00",
@@ -1522,10 +1524,10 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"PDM_DL2", NULL, "DL2 Mixer"},
 
 	/* VxREC Mixer */
-	{"Capture Mixer", "Tones", "TONES_DL"},
-	{"Capture Mixer", "Voice Playback", "VX DL VMixer"},
-	{"Capture Mixer", "Voice Capture", "VX UL VMixer"},
-	{"Capture Mixer", "Media Playback", "MM_DL VMixer"},
+	{"Capture Mixer", "Tones", "VXREC"},
+	{"Capture Mixer", "Voice Playback", "VXREC"},
+	{"Capture Mixer", "Voice Capture", "VXREC"},
+	{"Capture Mixer", "Media Playback", "VXREC"},
 	{"MM_DL VMixer", NULL, "MM_DL"},
 	{"MM_DL VMixer", NULL, "MM_DL_LP"},
 
@@ -1562,6 +1564,7 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"DMIC0", NULL, "BE_IN"},
 	{"DMIC1", NULL, "BE_IN"},
 	{"DMIC2", NULL, "BE_IN"},
+	{"VXREC", NULL, "BE_IN"},
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -2125,6 +2128,19 @@ static int aess_save_context(struct abe_data *abe)
 	abe_mute_gain(MIXECHO, MIX_ECHO_DL1);
 	abe_mute_gain(MIXECHO, MIX_ECHO_DL2);
 
+	/* mute gains associated with DL1 BE
+	 * ideally, these gains should be muted/saved when BE is muted, but
+	 * when ABE McPDM is started for DL1 or DL2, PDM_DL1 port gets enabled
+	 * which prevents to mute these gains since two ports on DL1 path are
+	 * active when mute is called for BT_VX_DL or MM_EXT_DL.
+	 *
+	 * These gains are not restored along with the context because they
+	 * are properly unmuted/restored when any of the DL1 BEs is unmuted
+	*/
+	abe_mute_gain(GAINS_DL1, GAIN_LEFT_OFFSET);
+	abe_mute_gain(GAINS_DL1, GAIN_RIGHT_OFFSET);
+	abe_mute_gain(MIXSDT, MIX_SDT_INPUT_DL1_MIXER);
+
 	return 0;
 }
 
@@ -2224,10 +2240,12 @@ static int aess_hw_params(struct snd_pcm_substream *substream,
 	size_t period_size;
 	u32 dst;
 
+	mutex_lock(&abe->mutex);
+
 	dev_dbg(dai->dev, "%s: %s\n", __func__, dai->name);
 
 	if (dai->id != ABE_FRONTEND_DAI_LP_MEDIA)
-		return 0;
+		goto out;
 
 	/*Storing substream pointer for irq*/
 	abe->ping_pong_substream = substream;
@@ -2237,9 +2255,6 @@ static int aess_hw_params(struct snd_pcm_substream *substream,
 		format.samp_format = STEREO_MSB;
 	else
 		format.samp_format = STEREO_16_16;
-
-	if (format.f == 44100)
-		abe_write_event_generator(EVENT_44100);
 
 	period_size = params_period_bytes(params);
 
@@ -2263,6 +2278,8 @@ static int aess_hw_params(struct snd_pcm_substream *substream,
 	abe_set_ping_pong_buffer(MM_DL_PORT, period_size);
 	abe->first_irq = 1;
 
+out:
+	mutex_unlock(&abe->mutex);
 	return 0;
 }
 

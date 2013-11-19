@@ -1,6 +1,7 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
+#include <linux/vmalloc.h>
 #include <mach/tiler.h>
 #include <video/dsscomp.h>
 #include <plat/dsscomp.h>
@@ -12,7 +13,6 @@
 static bool blanked;
 
 #define NUM_TILER1D_SLOTS 2
-#define TILER1D_SLOT_SIZE (16 << 20)
 
 static struct tiler1d_slot {
 	struct list_head q;
@@ -42,6 +42,13 @@ struct dsscomp_gralloc_t {
 static LIST_HEAD(flip_queue);
 
 static u32 ovl_use_mask[MAX_MANAGERS];
+
+static unsigned int tiler1d_slot_size(struct dsscomp_dev *cdev)
+{
+	struct dsscomp_platform_data *pdata;
+	pdata = (struct dsscomp_platform_data *)cdev->pdev->platform_data;
+	return pdata->tiler1d_slotsz;
+}
 
 static void unpin_tiler_blocks(struct list_head *slots)
 {
@@ -399,7 +406,7 @@ skip_map1d:
 		if (r)
 			dev_err(DEV(cdev), "failed to pin %d pages into"
 				" %d-pg slots (%d)\n", slot_used,
-				TILER1D_SLOT_SIZE >> PAGE_SHIFT, r);
+				tiler1d_slot_size(cdev) >> PAGE_SHIFT, r);
 	}
 
 	for (ch = 0; ch < MAX_MANAGERS; ch++) {
@@ -440,6 +447,7 @@ skip_comp:
 
 	return r;
 }
+EXPORT_SYMBOL(dsscomp_gralloc_queue);
 
 #ifdef CONFIG_EARLYSUSPEND
 static int blank_complete;
@@ -558,10 +566,12 @@ void dsscomp_gralloc_init(struct dsscomp_dev *cdev_)
 {
 	int i;
 
+	if (!cdev_)
+		return;
+
 	/* save at least cdev pointer */
 	if (!cdev && cdev_) {
 		cdev = cdev_;
-
 #ifdef CONFIG_HAS_EARLYSUSPEND
 		register_early_suspend(&early_suspend_info);
 #endif
@@ -573,16 +583,17 @@ void dsscomp_gralloc_init(struct dsscomp_dev *cdev_)
 			u32 phys;
 			tiler_blk_handle slot =
 				tiler_alloc_block_area(TILFMT_PAGE,
-					TILER1D_SLOT_SIZE, 1, &phys, NULL);
+					tiler1d_slot_size(cdev_), 1, &phys,
+					NULL);
 			if (IS_ERR_OR_NULL(slot)) {
 				pr_err("could not allocate slot");
 				break;
 			}
 			slots[i].slot = slot;
 			slots[i].phys = phys;
-			slots[i].size = TILER1D_SLOT_SIZE >> PAGE_SHIFT;
-			slots[i].page_map = kmalloc(sizeof(*slots[i].page_map) *
-						slots[i].size, GFP_KERNEL);
+			slots[i].size = tiler1d_slot_size(cdev_) >> PAGE_SHIFT;
+			slots[i].page_map = vmalloc(sizeof(*slots[i].page_map) *
+						slots[i].size);
 			if (!slots[i].page_map) {
 				pr_err("could not allocate page_map");
 				tiler_free_block_area(slot);
@@ -605,7 +616,9 @@ void dsscomp_gralloc_exit(void)
 	unregister_early_suspend(&early_suspend_info);
 #endif
 
-	list_for_each_entry(slot, &free_slots, q)
+	list_for_each_entry(slot, &free_slots, q) {
+		vfree(slot->page_map);
 		tiler_free_block_area(slot->slot);
+	}
 	INIT_LIST_HEAD(&free_slots);
 }

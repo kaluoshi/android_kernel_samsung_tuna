@@ -49,8 +49,6 @@
 #define UART_OMAP_IIR_ID		0x3e
 #define UART_OMAP_IIR_RX_TIMEOUT	0xc
 
-#define UART_OMAP_TXFIFO_LVL		(0x68/4)
-
 static struct uart_omap_port *ui[OMAP_MAX_HSUART_PORTS];
 
 /* Forward declaration of functions */
@@ -315,10 +313,10 @@ ignore_char:
 	spin_lock(&up->port.lock);
 }
 
-static void transmit_chars(struct uart_omap_port *up, u8 tx_fifo_lvl)
+static void transmit_chars(struct uart_omap_port *up)
 {
 	struct circ_buf *xmit = &up->port.state->xmit;
-	int count, i;
+	int count;
 
 	if (up->port.x_char) {
 		serial_out(up, UART_TX, up->port.x_char);
@@ -330,14 +328,14 @@ static void transmit_chars(struct uart_omap_port *up, u8 tx_fifo_lvl)
 		serial_omap_stop_tx(&up->port);
 		return;
 	}
-	count = up->port.fifosize - tx_fifo_lvl;
-	for (i = 0; i < count; i++) {
+	count = up->port.fifosize / 4;
+	do {
 		serial_out(up, UART_TX, xmit->buf[xmit->tail]);
 		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 		up->port.icount.tx++;
 		if (uart_circ_empty(xmit))
 			break;
-	}
+	} while (--count > 0);
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 		uart_write_wakeup(&up->port);
@@ -458,7 +456,6 @@ static inline irqreturn_t serial_omap_irq(int irq, void *dev_id)
 	unsigned int int_id;
 	unsigned long flags;
 	int ret = IRQ_HANDLED;
-	u8 tx_fifo_lvl;
 
 	serial_omap_port_enable(up);
 	iir = serial_in(up, UART_IIR);
@@ -487,9 +484,8 @@ static inline irqreturn_t serial_omap_irq(int irq, void *dev_id)
 
 	check_modem_status(up);
 	if (int_id == UART_IIR_THRI) {
-		tx_fifo_lvl = serial_in(up, UART_OMAP_TXFIFO_LVL);
-		if (lsr & UART_LSR_THRE || tx_fifo_lvl < up->port.fifosize)
-			transmit_chars(up, tx_fifo_lvl);
+		if (lsr & UART_LSR_THRE)
+			transmit_chars(up);
 		else
 			ret = IRQ_NONE;
 	}
@@ -644,6 +640,7 @@ static int serial_omap_startup(struct uart_port *port)
 	serial_out(up, UART_IER, up->ier);
 
 	/* Enable module level wake up */
+	up->wer_restore = up->wer;
 	serial_out(up, UART_OMAP_WER, up->wer);
 
 	serial_omap_port_disable(up);
@@ -663,6 +660,7 @@ static void serial_omap_shutdown(struct uart_port *port)
 	 * Disable interrupts & wakeup events from this port
 	 */
 	up->ier = 0;
+	up->wer_restore = 0;
 	serial_out(up, UART_OMAP_WER, 0);
 	serial_out(up, UART_IER, 0);
 
@@ -762,7 +760,6 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 {
 	struct uart_omap_port *up = (struct uart_omap_port *)port;
 	unsigned char cval = 0;
-	unsigned char efr = 0;
 	unsigned long flags = 0;
 	unsigned int baud, quot;
 
@@ -854,9 +851,9 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 	serial_out(up, UART_IER, up->ier);
 	serial_out(up, UART_LCR, cval);		/* reset DLAB */
 	up->lcr = cval;
+	up->scr = OMAP_UART_SCR_TX_EMPTY;
 
 	/* FIFOs and DMA Settings */
-
 	/* FCR can be changed only when the
 	 * baud clock is not running
 	 * DLL_REG and DLH_REG set to 0.
@@ -885,10 +882,10 @@ serial_omap_set_termios(struct uart_port *port, struct ktermios *termios,
 		}
 
 		serial_out(up, UART_TI752_TLR, 0);
-		serial_out(up, UART_OMAP_SCR,
-			(UART_FCR_TRIGGER_4 | UART_FCR_TRIGGER_8));
+		up->scr |= (UART_FCR_TRIGGER_4 | UART_FCR_TRIGGER_8);
 	}
 
+	serial_out(up, UART_OMAP_SCR, up->scr);
 	serial_out(up, UART_EFR, up->efr);
 	serial_out(up, UART_LCR, UART_LCR_CONF_MODE_A);
 	serial_out(up, UART_MCR, up->mcr);
@@ -1508,6 +1505,7 @@ static int serial_omap_probe(struct platform_device *pdev)
 	up->wake_peer = omap_up_info->wake_peer;
 	up->rts_mux_driver_control = omap_up_info->rts_mux_driver_control;
 	up->rts_pullup_in_suspend = 0;
+	up->wer_restore = 0;
 
 	if (omap_up_info->use_dma) {
 		up->uart_dma.uart_dma_tx = dma_tx->start;
@@ -1639,7 +1637,7 @@ static void omap_uart_restore_context(struct uart_omap_port *up)
 	serial_out(up, UART_EFR, up->efr);
 	serial_out(up, UART_LCR, up->lcr);
 	/* Enable module level wake up */
-	serial_out(up, UART_OMAP_WER, up->wer);
+	serial_out(up, UART_OMAP_WER, up->wer_restore);
 	if (up->use_dma) {
 		if (up->errata & OMAP4_UART_ERRATA_i659_TX_THR) {
 			serial_out(up, UART_MDR3, SET_DMA_TX_THRESHOLD);
@@ -1647,10 +1645,9 @@ static void omap_uart_restore_context(struct uart_omap_port *up)
 		}
 
 		serial_out(up, UART_TI752_TLR, 0);
-		serial_out(up, UART_OMAP_SCR,
-			(UART_FCR_TRIGGER_4 | UART_FCR_TRIGGER_8));
 	}
 
+	serial_out(up, UART_OMAP_SCR, up->scr);
 	/* UART 16x mode */
 	if (up->errata & UART_ERRATA_i202_MDR1_ACCESS)
 		omap_uart_mdr1_errataset(up, up->mdr1);
@@ -1733,6 +1730,37 @@ static void __exit serial_omap_exit(void)
 {
 	platform_driver_unregister(&serial_omap_driver);
 	uart_unregister_driver(&serial_omap_reg);
+}
+
+/* Used by ext client device connected to uart to control uart */
+int omap_serial_ext_uart_enable(u8 port_id)
+{
+	struct uart_omap_port *up;
+	int err = 0;
+
+	if (port_id > OMAP_MAX_HSUART_PORTS) {
+		pr_err("Invalid Port_id %d passed to %s\n", port_id, __func__);
+		err = -ENODEV;
+	} else {
+		up = ui[port_id];
+		serial_omap_port_enable(up);
+	}
+	return err;
+}
+
+int omap_serial_ext_uart_disable(u8 port_id)
+{
+	struct uart_omap_port *up;
+	int err = 0;
+
+	if (port_id > OMAP_MAX_HSUART_PORTS) {
+		pr_err("Invalid Port_id %d passed to %s\n", port_id, __func__);
+		err = -ENODEV;
+	} else {
+		up = ui[port_id];
+		serial_omap_port_disable(up);
+	}
+	return err;
 }
 
 module_init(serial_omap_init);

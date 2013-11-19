@@ -327,6 +327,7 @@ static int twl6040_power_up_completion(struct twl6040 *twl6040,
 	lppllctl_exp = TWL6040_LPLLENA;
 
 	do {
+		INIT_COMPLETION(twl6040->ready);
 		gpio_set_value(twl6040->audpwron, 1);
 		time_left = wait_for_completion_timeout(&twl6040->ready,
 							msecs_to_jiffies(700));
@@ -422,6 +423,20 @@ static int twl6040_power(struct twl6040 *twl6040, int enable)
 				return ret;
 			}
 		}
+
+		/* Errata: PDMCLK can fail to generate at cold temperatures
+		 * The workaround consists of resetting HPPLL and LPPLL
+		 * after Sleep/Deep-Sleep mode and before application mode.
+		 */
+		twl6040_set_bits(twl6040, TWL6040_REG_HPPLLCTL,
+				TWL6040_HPLLRST);
+		twl6040_clear_bits(twl6040, TWL6040_REG_HPPLLCTL,
+				TWL6040_HPLLRST);
+		twl6040_set_bits(twl6040, TWL6040_REG_LPPLLCTL,
+				TWL6040_LPLLRST);
+		twl6040_clear_bits(twl6040, TWL6040_REG_LPPLLCTL,
+				TWL6040_LPLLRST);
+
 		twl6040->pll = TWL6040_LPPLL_ID;
 		twl6040->sysclk = 19200000;
 	} else {
@@ -655,6 +670,15 @@ static int __devinit twl6040_probe(struct platform_device *pdev)
 	mutex_init(&twl6040->mutex);
 	mutex_init(&twl6040->io_mutex);
 
+	if (pdata->init) {
+		ret = pdata->init();
+		if (ret) {
+			dev_err(twl6040->dev, "Platform init failed %d\n",
+				ret);
+			goto init_err;
+		}
+	}
+
 	twl6040->icrev = twl6040_reg_read(twl6040, TWL6040_REG_ASICREV);
 	if (twl6040->icrev < 0) {
 		ret = twl6040->icrev;
@@ -694,8 +718,8 @@ static int __devinit twl6040_probe(struct platform_device *pdev)
 			goto gpio2_err;
 
 		ret = twl6040_request_irq(twl6040, TWL6040_IRQ_READY,
-				  twl6040_naudint_handler, "twl6040_irq_ready",
-				  twl6040);
+				twl6040_naudint_handler, 0,
+				"twl6040_irq_ready", twl6040);
 		if (ret) {
 			dev_err(twl6040->dev, "READY IRQ request failed: %d\n",
 				ret);
@@ -759,6 +783,9 @@ gpio2_err:
 	if (gpio_is_valid(audpwron))
 		gpio_free(audpwron);
 gpio1_err:
+	if (pdata->exit)
+		pdata->exit();
+init_err:
 	platform_set_drvdata(pdev, NULL);
 	kfree(twl6040);
 	return ret;
@@ -785,6 +812,9 @@ static int __devexit twl6040_remove(struct platform_device *pdev)
 
 	if (pdata->put_ext_clk32k)
 		pdata->put_ext_clk32k();
+
+	if (pdata->exit)
+		pdata->exit();
 
 	platform_set_drvdata(pdev, NULL);
 	kfree(twl6040);

@@ -234,9 +234,13 @@ static long setup_mgr(struct dsscomp_dev *cdev,
 		u32 addr = (u32) oi->address;
 
 		/* convert addresses to user space */
-		if (oi->cfg.color_mode == OMAP_DSS_COLOR_NV12)
-			oi->uv = hwc_virt_to_phys(addr +
+		if (oi->cfg.color_mode == OMAP_DSS_COLOR_NV12) {
+			if (oi->uv_address)
+				oi->uv = hwc_virt_to_phys((u32) oi->uv_address);
+			else
+				oi->uv = hwc_virt_to_phys(addr +
 					oi->cfg.height * oi->cfg.stride);
+		}
 		oi->ba = hwc_virt_to_phys(addr);
 
 		r = r ? : dsscomp_set_ovl(comp, oi);
@@ -316,6 +320,13 @@ static long query_display(struct dsscomp_dev *cdev,
 		else if (!cdev->ovls[i]->info.enabled)
 			dis->overlays_available |= 1 << i;
 	}
+	if (cdev->wb_ovl) {
+		if (cdev->wb_ovl->info.source == mgr->id)
+			dis->overlays_owned |= 1 << OMAP_DSS_WB;
+		else if (!cdev->wb_ovl->info.enabled)
+			dis->overlays_available |= 1 << OMAP_DSS_WB;
+	}
+
 	dis->overlays_available |= dis->overlays_owned;
 
 	/* fill out manager information */
@@ -378,6 +389,8 @@ static void fill_cache(struct dsscomp_dev *cdev)
 	for (i = 0; i < cdev->num_ovls; i++)
 		cdev->ovls[i] = omap_dss_get_overlay(i);
 
+	cdev->wb_ovl = omap_dss_get_wb(0);
+
 	cdev->num_mgrs = min(omap_dss_get_num_overlay_managers(), MAX_MANAGERS);
 	for (i = 0; i < cdev->num_mgrs; i++)
 		cdev->mgrs[i] = omap_dss_get_overlay_manager(i);
@@ -399,8 +412,9 @@ static void fill_cache(struct dsscomp_dev *cdev)
 		blocking_notifier_chain_register(&dssdev->state_notifiers,
 						cdev->state_notifiers + i);
 	}
-	dev_info(DEV(cdev), "found %d displays and %d overlays\n",
-				cdev->num_displays, cdev->num_ovls);
+	dev_info(DEV(cdev), "found %d displays and %d overlays, WB overlay %d\n",
+				cdev->num_displays, cdev->num_ovls,
+				cdev->wb_ovl ? 1 : 0);
 }
 
 static long comp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
@@ -530,6 +544,7 @@ static int dsscomp_probe(struct platform_device *pdev)
 
 	ret = misc_register(&cdev->dev);
 	if (ret) {
+		kfree(cdev);
 		pr_err("dsscomp: failed to register misc device.\n");
 		return ret;
 	}
@@ -547,6 +562,7 @@ static int dsscomp_probe(struct platform_device *pdev)
 #endif
 	}
 
+	cdev->pdev = &pdev->dev;
 	platform_set_drvdata(pdev, cdev);
 
 	pr_info("dsscomp: initializing.\n");
@@ -578,26 +594,17 @@ static struct platform_driver dsscomp_pdriver = {
 	.driver = { .name = MODULE_NAME, .owner = THIS_MODULE }
 };
 
-static struct platform_device dsscomp_pdev = {
-	.name = MODULE_NAME,
-	.id = -1
-};
-
 static int __init dsscomp_init(void)
 {
 	int err = platform_driver_register(&dsscomp_pdriver);
 	if (err)
 		return err;
 
-	err = platform_device_register(&dsscomp_pdev);
-	if (err)
-		platform_driver_unregister(&dsscomp_pdriver);
 	return err;
 }
 
 static void __exit dsscomp_exit(void)
 {
-	platform_device_unregister(&dsscomp_pdev);
 	platform_driver_unregister(&dsscomp_pdriver);
 }
 

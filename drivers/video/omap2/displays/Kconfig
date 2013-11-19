@@ -55,4 +55,24 @@ config PANEL_ACX565AKM
 	select BACKLIGHT_CLASS_DEVICE
 	help
 	  This is the LCD panel used on Nokia N900
+
+config PANEL_TC358765
+	tristate "Toshiba TC358765 DSI-2-LVDS chip"
+	depends on OMAP2_DSS_DSI && I2C
+	select BACKLIGHT_CLASS_DEVICE
+	help
+	  Toshiba TC358765 DSI-2-LVDS chip with 1024x768 panel
+config TC358765_DEBUG
+	bool "Toshiba TC358765 DSI-2-LVDS chip debug"
+	depends on PANEL_TC358765 && DEBUG_FS
+	help
+	  Support of TC358765 DSI-2-LVDS chip register access via debugfs
+
+config COLOR_HACK
+    bool "Color Hack"
+    depends on PANEL_S6E8AA0
+    default y
+    ---help---
+        This enables support samoled color hack based on Supercurio work. Fully extracted work from Crespo CM kernel.
+
 endmenu

@@ -126,6 +126,7 @@ struct omap_voltage_notifier {
 #define OMAP_ABB_NONE		-1
 #define OMAP_ABB_NOMINAL_OPP	0
 #define OMAP_ABB_FAST_OPP	1
+#define OMAP_ABB_SLOW_OPP	3
 
 /**
  * struct omap_volt_data - Omap voltage specific data.
@@ -134,7 +135,7 @@ struct omap_voltage_notifier {
  * @voltage_dynamic_nominal:	The run time optimized nominal voltage for
  *			the device. Dynamic nominal is the nominal voltage
  *			specialized for that OPP on the device in uV.
- * @volt_margin:	Additional sofware margin in uV to add to OPP calibrated
+ * @volt_margin:	Additional sofware margin to add to OPP calibrated
  *			voltage
  * @sr_efuse_offs:	The offset of the efuse register(from system
  *			control module base address) from where to read
@@ -179,6 +180,11 @@ struct omap_volt_data {
 #define OMAP3630_VP1_VLIMITTO_VDDMAX	1350000
 #define OMAP3630_VP2_VLIMITTO_VDDMIN	900000
 #define OMAP3630_VP2_VLIMITTO_VDDMAX	1200000
+
+#define OMAP3_VP_CONFIG_ERROROFFSET	0x00
+#define OMAP3_VP_VSTEPMIN_VSTEPMIN	0x1
+#define OMAP3_VP_VSTEPMAX_VSTEPMAX	0x04
+#define OMAP3_VP_VLIMITTO_TIMEOUT_US	200
 
 #define OMAP4_VP_MPU_VLIMITTO_VDDMIN	830000
 #define OMAP4_VP_MPU_VLIMITTO_VDDMAX	1410000

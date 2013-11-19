@@ -1951,7 +1951,6 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	musb->gadget_driver = driver;
 	musb->g.dev.driver = &driver->driver;
 	driver->driver.bus = NULL;
-	musb->softconnect = 1;
 	spin_unlock_irqrestore(&musb->lock, flags);
 
 	retval = bind(&musb->g);
@@ -1988,8 +1987,11 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 		hcd->self.uses_pio_for_control = 1;
 	}
 
-	if (musb->xceiv->last_event == USB_EVENT_NONE)
+	if ((musb->xceiv->last_event == USB_EVENT_NONE) ||
+			(musb->xceiv->last_event == USB_EVENT_CHARGER)) {
+		musb->xceiv->state = OTG_STATE_B_IDLE;
 		pm_runtime_put(musb->controller);
+	}
 
 	return 0;
 

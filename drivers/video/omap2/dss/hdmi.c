@@ -43,6 +43,11 @@
 #include "dss.h"
 #include "dss_features.h"
 
+#ifdef CONFIG_OMAP_PM
+#include <linux/pm_qos_params.h>
+static struct pm_qos_request_list pm_qos_handle;
+#endif
+
 #define HDMI_WP			0x0
 #define HDMI_CORE_SYS		0x400
 #define HDMI_CORE_AV		0x900
@@ -84,6 +89,9 @@ static struct {
 	int enabled;
 	bool set_mode;
 	bool wp_reset_done;
+
+	u8 s3d_mode;
+	bool s3d_enable;
 
 	void (*hdmi_start_frame_cb)(void);
 	void (*hdmi_irq_cb)(int);
@@ -333,7 +341,6 @@ static void hdmi_compute_pll(struct omap_dss_device *dssdev, int phy,
 static void hdmi_load_hdcp_keys(struct omap_dss_device *dssdev)
 {
 	int aksv;
-	int retries = 5;
 	DSSDBG("hdmi_load_hdcp_keys\n");
 	/* load the keys and reset the wrapper to populate the AKSV registers*/
 	if (hdmi.hdmi_power_on_cb) {
@@ -342,15 +349,11 @@ static void hdmi_load_hdcp_keys(struct omap_dss_device *dssdev)
 		    hdmi.custom_set &&
 		    hdmi.hdmi_power_on_cb()) {
 			hdmi_ti_4xxx_set_wait_soft_reset(&hdmi.hdmi_data);
-
-			while (retries) {
-				aksv = hdmi_ti_4xx_check_aksv_data(&hdmi.hdmi_data);
-				if (aksv == HDMI_AKSV_VALID)
-					break;
-				msleep(50);
-				retries--;
-			}
-
+			/* HDCP keys are available in the AKSV registers 2ms after
+			 * the RESET# rising edge, hence the delay before reading
+			 * the registers*/
+			mdelay(10);
+			aksv = hdmi_ti_4xx_check_aksv_data(&hdmi.hdmi_data);
 			hdmi.wp_reset_done = (aksv == HDMI_AKSV_VALID) ?
 				true : false;
 			DSSINFO("HDMI_WRAPPER RESET DONE\n");
@@ -360,10 +363,26 @@ static void hdmi_load_hdcp_keys(struct omap_dss_device *dssdev)
 			hdmi.wp_reset_done = false;
 
 		if (!hdmi.wp_reset_done)
-			DSSERR("*** INVALID AKSV: "
-				"Do not perform HDCP AUTHENTICATION\n");
+			DSSERR("*** INVALID AKSV: %d "
+				"Do not perform HDCP AUTHENTICATION\n", aksv);
 	}
 
+}
+
+/* Set / Release c-state constraints */
+static void hdmi_set_l3_cstr(struct omap_dss_device *dssdev, bool enable)
+{
+#ifdef CONFIG_OMAP_PM
+	DSSINFO("%s c-state constraint for HDMI\n\n",
+		enable ? "Set" : "Release");
+
+	if (enable)
+		pm_qos_add_request(&pm_qos_handle, PM_QOS_CPU_DMA_LATENCY, 100);
+	else
+		pm_qos_remove_request(&pm_qos_handle);
+#else
+	DSSINFO("C-STATE Constraints require COMFIG_OMAP_PM to be set\n");
+#endif
 }
 
 static int hdmi_power_on(struct omap_dss_device *dssdev)
@@ -376,6 +395,8 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 	r = hdmi_runtime_get();
 	if (r)
 		return r;
+
+	hdmi_set_l3_cstr(dssdev, true);
 
 	/* Load the HDCP keys if not already loaded*/
 	hdmi_load_hdcp_keys(dssdev);
@@ -438,17 +459,24 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 	hdmi.cfg.cm.mode = hdmi.can_do_hdmi ? hdmi.mode : HDMI_DVI;
 	hdmi.cfg.cm.code = hdmi.code;
 	hdmi_ti_4xxx_basic_configure(&hdmi.hdmi_data, &hdmi.cfg);
-
+	if (hdmi.s3d_enable) {
+		struct hdmi_core_vendor_specific_infoframe config;
+		config.enable = hdmi.s3d_enable;
+		config.s3d_structure = hdmi.s3d_mode;
+		if (config.s3d_structure == 8)
+			config.s3d_ext_data = 1;
+		hdmi_core_vsi_config(&hdmi.hdmi_data, &config);
+	}
 	/* Make selection of HDMI in DSS */
 	dss_select_hdmi_venc_clk_source(DSS_HDMI_M_PCLK);
 
-	/* Select the dispc clock source as PRCM clock, to ensure that it is not
-	 * DSI PLL source as the clock selected by DSI PLL might not be
-	 * sufficient for the resolution selected / that can be changed
-	 * dynamically by user. This can be moved to single location , say
-	 * Boardfile.
+	/*
+	 * Select the DISPC clock source as PRCM clock in case when both LCD
+	 * panels are disabled and we cannot use DSI PLL for this purpose.
 	 */
-	dss_select_dispc_clk_source(dssdev->clocks.dispc.dispc_fclk_src);
+	if (!dispc_is_channel_enabled(OMAP_DSS_CHANNEL_LCD) &&
+	    !dispc_is_channel_enabled(OMAP_DSS_CHANNEL_LCD2))
+		dss_select_dispc_clk_source(dssdev->clocks.dispc.dispc_fclk_src);
 
 	/* bypass TV gamma table */
 	dispc_enable_gamma_table(0);
@@ -468,20 +496,27 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 
 	return 0;
 err:
+	hdmi_set_l3_cstr(dssdev, false);
 	hdmi_runtime_put();
 	return -EIO;
 }
 
 static void hdmi_power_off(struct omap_dss_device *dssdev)
 {
+	enum hdmi_pwrchg_reasons reason = HDMI_PWRCHG_DEFAULT;
 	if (hdmi.hdmi_irq_cb)
 		hdmi.hdmi_irq_cb(HDMI_HPD_LOW);
 
 	hdmi_ti_4xxx_wp_video_start(&hdmi.hdmi_data, 0);
 
 	dispc_enable_channel(OMAP_DSS_CHANNEL_DIGIT, dssdev->type, 0);
-	hdmi_ti_4xxx_phy_off(&hdmi.hdmi_data, hdmi.set_mode);
+	if (hdmi.set_mode)
+		reason = reason | HDMI_PWRCHG_MODE_CHANGE;
+	if (dssdev->sync_lost_error)
+		reason = reason | HDMI_PWRCHG_RESYNC;
+	hdmi_ti_4xxx_phy_off(&hdmi.hdmi_data, reason);
 	hdmi_ti_4xxx_set_pll_pwr(&hdmi.hdmi_data, HDMI_PLLPWRCMD_ALLOFF);
+	hdmi_set_l3_cstr(dssdev, false);
 	hdmi_runtime_put();
 	hdmi.deep_color = HDMI_DEEP_COLOR_24BIT;
 }
@@ -516,6 +551,35 @@ void omapdss_hdmi_set_deepcolor(int val)
 int omapdss_hdmi_get_deepcolor(void)
 {
 	return hdmi.deep_color;
+}
+
+ssize_t omapdss_hdmi_get_edid(char *edid_buffer)
+{
+	ssize_t size = hdmi.enabled ? HDMI_EDID_MAX_LENGTH : 0;
+	memcpy(edid_buffer, hdmi.edid, size);
+	return size;
+}
+
+void omapdss_hdmi_set_s3d_mode(int val)
+{
+	hdmi.s3d_mode = val;
+}
+
+int omapdss_hdmi_get_s3d_mode(void)
+{
+	return hdmi.s3d_mode;
+}
+
+void omapdss_hdmi_enable_s3d(bool enable)
+{
+	hdmi.s3d_enable = enable;
+	if (hdmi.enabled)
+		omapdss_hdmi_display_set_timing(hdmi.dssdev);
+}
+
+int omapdss_hdmi_get_s3d_enable(void)
+{
+	return hdmi.s3d_enable;
 }
 
 int hdmi_get_current_hpd()
@@ -792,6 +856,9 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 	hdmi.wp_reset_done = false;
 
 	hdmi_panel_init();
+
+	if(hdmi_get_current_hpd())
+		hdmi_panel_hpd_handler(1);
 
 	return 0;
 }

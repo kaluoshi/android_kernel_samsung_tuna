@@ -83,6 +83,7 @@
 #define TWL6040_REV_1_0			0x00
 #define TWL6040_REV_1_1			0x01
 #define TWL6040_REV_1_3			0x02
+#define TWL6041_REV_2_0			0x10
 
 /* INTID (0x03) fields */
 
@@ -140,13 +141,19 @@
 
 /* HSLCTL (0x10) fields */
 
+#define TWL6040_HSDACENAL		0x01
 #define TWL6040_HSDACMODEL		0x02
 #define TWL6040_HSDRVMODEL		0x08
 
 /* HSRCTL (0x11) fields */
 
+#define TWL6040_HSDACENAR		0x01
 #define TWL6040_HSDACMODER		0x02
 #define TWL6040_HSDRVMODER		0x08
+
+/* EARCTL (0x13) fields */
+
+#define TWL6040_EARENA			0x01
 
 /* VIBCTLL (0x18) fields */
 
@@ -190,8 +197,12 @@
 /* STATUS (0x2E) fields */
 
 #define TWL6040_PLUGCOMP		0x02
+#define TWL6040_VIBLOCDET		0x10
+#define TWL6040_VIBROCDET		0x20
 
 #define TWL6040_CELLS			2
+
+#define TWL6040_POWER_UP_TIME		16 /* ms */
 
 #define TWL6040_IRQ_TH			0
 #define TWL6040_IRQ_PLUG		1
@@ -229,14 +240,15 @@ struct twl6040 {
 };
 
 static inline int twl6040_request_irq(struct twl6040 *twl6040, int irq,
-				      irq_handler_t handler, const char *name,
-				      void *data)
+				      irq_handler_t handler,
+				      unsigned long irqflags,
+				      const char *name, void *data)
 {
 	if (!twl6040->irq_base)
 		return -EINVAL;
 
 	return request_threaded_irq(twl6040->irq_base + irq, NULL, handler,
-				    0, name, data);
+				    irqflags, name, data);
 }
 
 static inline void twl6040_free_irq(struct twl6040 *twl6040, int irq,

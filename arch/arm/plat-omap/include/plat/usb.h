@@ -114,6 +114,7 @@ extern int omap4430_phy_power(struct device *dev, int ID, int on);
 extern int omap4430_phy_set_clk(struct device *dev, int on);
 extern int omap4430_phy_init(struct device *dev);
 extern int omap4430_phy_exit(struct device *dev);
+extern int omap4_charger_detect(void);
 extern int omap4430_phy_suspend(struct device *dev, int suspend);
 #endif
 
@@ -304,5 +305,6 @@ extern void usbhs_wakeup(void);
 extern void omap4_trigger_ioctrl(void);
 
 #define USBHS_EHCI_HWMODNAME	"usbhs_ehci"
+#define USBHS_OHCI_HWMODNAME    "usbhs_ohci"
 
 #endif	/* __ASM_ARCH_OMAP_USB_H */

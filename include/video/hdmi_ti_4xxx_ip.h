@@ -32,6 +32,12 @@ enum hdmi_pll_pwr {
 	HDMI_PLLPWRCMD_BOTHON_NOPHYCLK = 3
 };
 
+enum hdmi_pwrchg_reasons {
+	HDMI_PWRCHG_DEFAULT = 0,
+	HDMI_PWRCHG_MODE_CHANGE = (1L << 0),
+	HDMI_PWRCHG_RESYNC = (1L << 1),
+};
+
 enum hdmi_core_hdmi_dvi {
 	HDMI_DVI = 0,
 	HDMI_HDMI = 1
@@ -276,7 +282,22 @@ struct hdmi_core_infoframe_audio {
 	u8 db5_lsv;	/* Level shift values for downmix */
 };
 
+enum hdmi_3d_format {
+	HDMI_FRAME_PACKING = 0,
+	HDMI_FIELD_ALTERNATIVE = 1,
+	HDMI_LINE_ALTERNATIVE = 2,
+	HDMI_SIDE_BY_SIDE_FULL = 3,
+	HDMI_L_DEPTH = 4,
+	HDMI_L_DEPTH_GFX_GFX_DEPTH = 5,
+	HDMI_TOPBOTTOM = 6,
+	HDMI_SIDE_BY_SIDE_HALF = 8
+};
 
+struct hdmi_core_vendor_specific_infoframe {
+	bool enable;
+	u8 s3d_structure;
+	u8 s3d_ext_data;
+};
 
 /* INFOFRAME_AVI_ and INFOFRAME_AUDIO_ definitions */
 enum hdmi_core_infoframe {
@@ -362,7 +383,8 @@ enum hdmi_aksv_err {
 };
 
 int hdmi_ti_4xxx_phy_init(struct hdmi_ip_data *ip_data);
-void hdmi_ti_4xxx_phy_off(struct hdmi_ip_data *ip_data, bool set_mode);
+void hdmi_ti_4xxx_phy_off(struct hdmi_ip_data *ip_data,
+			enum hdmi_pwrchg_reasons reason);
 int read_ti_4xxx_edid(struct hdmi_ip_data *ip_data, u8 *pedid, u16 max_length);
 void hdmi_ti_4xxx_wp_video_start(struct hdmi_ip_data *ip_data, bool start);
 int hdmi_ti_4xxx_pll_program(struct hdmi_ip_data *ip_data,
@@ -391,4 +413,6 @@ void hdmi_ti_4xxx_wp_audio_enable(struct hdmi_ip_data *ip_data, bool idle);
 
 int hdmi_ti_4xxx_set_wait_soft_reset(struct hdmi_ip_data *ip_data);
 int hdmi_ti_4xx_check_aksv_data(struct hdmi_ip_data *ip_data);
+void hdmi_core_vsi_config(struct hdmi_ip_data *ip_data,
+		struct hdmi_core_vendor_specific_infoframe *config);
 #endif

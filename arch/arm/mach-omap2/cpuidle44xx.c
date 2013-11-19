@@ -303,7 +303,8 @@ static void omap4_enter_idle_primary(struct omap4_processor_cx *cx)
 
 	cpu_pm_enter();
 
-	if (unlikely(skip_off))
+
+	if (skip_off)
 		goto out;
 
 	/* spin until cpu1 is really off */
@@ -317,12 +318,12 @@ static void omap4_enter_idle_primary(struct omap4_processor_cx *cx)
 	if (ret)
 		goto wake_cpu1;
 
-	if (likely(!keep_mpu_on)) {
+	if (!keep_mpu_on) {
 		pwrdm_set_logic_retst(mpu_pd, cx->mpu_logic_state);
 		omap_set_pwrdm_state(mpu_pd, cx->mpu_state);
 	}
 
-	if (likely(!keep_core_on)) {
+	if (!keep_core_on) {
 		pwrdm_set_logic_retst(core_pd, cx->core_logic_state);
 		omap_set_pwrdm_state(core_pd, cx->core_state);
 	}
